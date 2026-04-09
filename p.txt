@@ -1,0 +1,3 @@
+DPUzLlLLyqqPizOS
+
+pg_dump postgresql://neondb_owner:npg_2t8HlKuGTbmQ@ep-long-bread-aa3wc5ag-pooler.westus3.azure.neon.tech/neondb?sslmode=require&channel_binding=require --clean --if-exists --quote-all-identifiers --no-owner --no-privileges > neon_dump.sql

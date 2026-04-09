@@ -1,0 +1,94 @@
+Id,Start,Name,Impact,Currency
+051b2ef0-a900-41fa-90dd-9e815457d29e,03/02/2026 15:00:00,ISM Manufacturing Employment Index,MEDIUM,USD
+c948ab7a-abc4-4867-978a-47c50406cf82,03/02/2026 15:00:00,ISM Manufacturing New Orders Index,MEDIUM,USD
+bb0c15f3-77e4-4583-aeed-6cdbac1fdc9a,03/02/2026 15:00:00,ISM Manufacturing PMI,HIGH,USD
+d754d76c-7520-404b-a011-b054a6ad98f1,03/02/2026 15:00:00,ISM Manufacturing Prices Paid,MEDIUM,USD
+9a6aafc2-ad92-4d92-9892-4118c7890dc6,03/03/2026 14:55:00,Fed's Williams speech,MEDIUM,USD
+8166c8cf-43b1-4b74-bb63-c1db2dbb7959,03/03/2026 15:10:00,Fed's Schmid speech,MEDIUM,USD
+97e3a74c-44d0-4d0b-b196-3edda48c9180,03/03/2026 16:45:00,Fed's Kashkari speech,MEDIUM,USD
+5203e68a-d0e6-4374-ba75-9bc8081a5ea9,03/04/2026 13:15:00,ADP Employment Change,HIGH,USD
+2fee9f07-349b-435b-af03-b0b27b820f82,03/04/2026 13:35:00,Fed's Miran speech,MEDIUM,USD
+28f046f9-46d5-46e3-ba5c-3973154f73fb,03/04/2026 14:45:00,S&P Global Composite PMI,MEDIUM,USD
+1e59c704-4515-4995-ba71-27a336925780,03/04/2026 15:00:00,ISM Services Employment Index,MEDIUM,USD
+2d2edbf0-07f9-4464-a29c-661c47bc7d1b,03/04/2026 15:00:00,ISM Services New Orders Index,MEDIUM,USD
+6638ce76-00c6-4afb-9dfe-7a11dc5a24ca,03/04/2026 15:00:00,ISM Services PMI,HIGH,USD
+4afb0b2a-a3b6-4d9e-894f-6a4788cd793d,03/04/2026 15:00:00,ISM Services Prices Paid,MEDIUM,USD
+deaec9cd-a24c-4cf5-af63-8723ff1d0abb,03/04/2026 19:00:00,Fed's Beige Book,MEDIUM,USD
+5feb9ffb-c1f1-4f4d-897d-fc527f185112,03/05/2026 12:30:00,Challenger Job Cuts,MEDIUM,USD
+d95bb0fc-7e01-4627-9242-1135dc5613c8,03/05/2026 13:30:00,Initial Jobless Claims,MEDIUM,USD
+909c95aa-3de4-487d-a036-16109b7c1071,03/05/2026 13:30:00,Nonfarm Productivity,MEDIUM,USD
+56adee5b-3fc9-49b4-aea1-454c88107f44,03/05/2026 13:30:00,Unit Labor Costs,MEDIUM,USD
+f82d3327-c3c4-428c-bbdf-c9183be0f914,03/05/2026 13:40:00,Fed's Barkin speech,MEDIUM,USD
+ce3b227c-ad1a-41c0-a335-c55c6a8940dd,03/05/2026 18:15:00,Fed's Bowman speech,MEDIUM,USD
+c3f7d2e5-69c4-4590-8662-c9a16c1137eb,03/06/2026 00:30:00,Fed's Goolsbee speech,MEDIUM,USD
+b54fa538-8541-4635-9869-fa02a1e5b484,03/06/2026 12:40:00,Fed's Waller speech,MEDIUM,USD
+9a0a1ea5-52de-4476-9dd2-b18e733f465e,03/06/2026 13:30:00,Average Hourly Earnings (MoM),HIGH,USD
+2205b8a3-bb5a-4b1c-9f09-1d00484257aa,03/06/2026 13:30:00,Average Hourly Earnings (YoY),HIGH,USD
+c213fdb6-8e0e-4076-8f2e-5de6b2a27e35,03/06/2026 13:30:00,Labor Force Participation Rate,MEDIUM,USD
+c20ad838-c094-4c00-8acc-7eb306d311ea,03/06/2026 13:30:00,Nonfarm Payrolls,HIGH,USD
+29ca9772-8122-4a1d-9946-7058ea9699d9,03/06/2026 13:30:00,Retail Sales (MoM),HIGH,USD
+5c3093e8-b1d4-48a0-927f-8005dc1dbf47,03/06/2026 13:30:00,Retail Sales Control Group,HIGH,USD
+a94cf01a-de2e-49be-bd2f-9de97d3ae8f7,03/06/2026 13:30:00,Retail Sales ex Autos (MoM),MEDIUM,USD
+dee1e29c-9dcb-4dbe-abc5-fdbb2b3ece70,03/06/2026 13:30:00,U6 Underemployment Rate,MEDIUM,USD
+19fa9342-9fb7-486e-9fa4-31f50c6646ab,03/06/2026 13:30:00,Unemployment Rate,MEDIUM,USD
+024b49b2-f06d-449a-8411-b6f26c8cdffc,03/06/2026 13:40:00,Fed's Daly speech,MEDIUM,USD
+85733096-347b-4c23-a244-5885a026a2a1,03/06/2026 15:15:00,Fed's Daly speech,MEDIUM,USD
+74f9ef82-d117-4fe0-a79e-9c65b2ffd11b,03/06/2026 15:15:00,Fed's Paulson speech,MEDIUM,USD
+4d203a84-76f1-41fb-a7be-e862b4fdc020,03/06/2026 16:30:00,Fed's Hammack speech,MEDIUM,USD
+b59e5f4e-df16-431a-95b8-0aac66951dac,03/06/2026 16:30:00,Fed's Miran speech,MEDIUM,USD
+3600d2cc-0ccf-41b4-8489-d7f13a662607,03/06/2026 16:30:00,Fed's Schmid speech,MEDIUM,USD
+c47ed9b8-86d7-4647-a56a-c0c39b6b50c3,03/06/2026 18:20:00,Fed's Collins speech,MEDIUM,USD
+d9084eff-5464-4a5a-9e80-b93c35731e32,03/10/2026 12:15:00,ADP Employment Change 4-week average,MEDIUM,USD
+e2d02bad-b135-4640-9eb5-391674d0e34a,03/10/2026 14:00:00,Existing Home Sales Change (MoM),MEDIUM,USD
+4a7e203c-cbd0-4a83-afd0-7c31e305fed2,03/11/2026 12:30:00,Consumer Price Index (MoM),HIGH,USD
+3b4d7f0d-e6f1-4e61-85d7-60d118024150,03/11/2026 12:30:00,Consumer Price Index (YoY),HIGH,USD
+5171b0e8-2d92-4efb-a830-cea8e915371c,03/11/2026 12:30:00,Consumer Price Index ex Food & Energy (MoM),HIGH,USD
+47b28b28-9c56-4288-8912-faa97ac4cc48,03/11/2026 12:30:00,Consumer Price Index ex Food & Energy (YoY),HIGH,USD
+286fc15b-ab44-44e5-afe0-3be33ef6ee8d,03/11/2026 18:00:00,Monthly Budget Statement,MEDIUM,USD
+039d2441-e60a-4e36-a57f-d48d4cdfc6b2,03/12/2026 12:30:00,Building Permits (MoM),MEDIUM,USD
+4ff43d8b-fda8-4c32-9c3b-fa7c922e5e1d,03/12/2026 12:30:00,Housing Starts (MoM),MEDIUM,USD
+53fa1c19-22a3-4646-a908-31dc6b05b3c5,03/12/2026 12:30:00,Initial Jobless Claims,MEDIUM,USD
+63d80729-7bbe-4636-8004-a0fc22b10843,03/12/2026 15:00:00,Fed's Bowman speech,MEDIUM,USD
+4d10faed-b688-434c-b171-825d3e98c251,03/13/2026 12:30:00,Core Personal Consumption Expenditures - Price Index (MoM),HIGH,USD
+e90591ee-54b0-444a-a903-5193f079eefa,03/13/2026 12:30:00,Core Personal Consumption Expenditures - Price Index (YoY),HIGH,USD
+2f355c87-9137-453d-bea3-aeed41acc099,03/13/2026 12:30:00,Core Personal Consumption Expenditures (QoQ),MEDIUM,USD
+c5fafab2-26a7-46bb-93cb-9f6586a2a542,03/13/2026 12:30:00,Durable Goods Orders,MEDIUM,USD
+3114948f-3ab0-45ab-bf70-02e258d337e1,03/13/2026 12:30:00,Durable Goods Orders ex Defense,MEDIUM,USD
+b9a6884b-f380-4ca9-93bc-b2721be39ff1,03/13/2026 12:30:00,Durable Goods Orders ex Transportation,MEDIUM,USD
+6bd96ef5-5cad-4c1a-97fa-c242e7fa4021,03/13/2026 12:30:00,Gross Domestic Product Annualized,HIGH,USD
+fc060c05-3024-4b77-acda-02d3aa654232,03/13/2026 12:30:00,Gross Domestic Product Price Index,MEDIUM,USD
+2a4bbcf6-0791-4487-8503-af123f454276,03/13/2026 12:30:00,Nondefense Capital Goods Orders ex Aircraft,MEDIUM,USD
+c10435bf-c019-4344-ab13-c206f36eb0bf,03/13/2026 12:30:00,Personal Consumption Expenditures - Price Index (MoM),MEDIUM,USD
+36be0848-20bd-4a1f-ace4-918ed335393f,03/13/2026 12:30:00,Personal Consumption Expenditures - Price Index (YoY),MEDIUM,USD
+3c1f44df-969c-4c19-8bba-7a93b51f64fd,03/13/2026 12:30:00,Personal Consumption Expenditures Prices (QoQ),MEDIUM,USD
+65b036a5-e777-4db3-816a-e2350026cbce,03/13/2026 12:30:00,Personal Income (MoM),MEDIUM,USD
+624c3e2d-cb7a-449d-b32d-11019dcb024d,03/13/2026 12:30:00,Personal Spending,MEDIUM,USD
+6d69f9b8-baf7-4302-acbc-345cc9bace9a,03/13/2026 14:00:00,JOLTS Job Openings,MEDIUM,USD
+f97fc65c-fd80-4e87-9245-257bc06ae590,03/13/2026 14:00:00,Michigan Consumer Expectations Index,MEDIUM,USD
+ac1e979a-c4c7-4bef-8f3f-11cd3423a601,03/13/2026 14:00:00,Michigan Consumer Sentiment Index,HIGH,USD
+ad69d979-46cc-4e91-bb69-f37ee8c12238,03/13/2026 14:00:00,UoM 1-year Consumer Inflation Expectations,MEDIUM,USD
+e66eb025-810f-403c-8f60-7a4850afc336,03/13/2026 14:00:00,UoM 5-year Consumer Inflation Expectation,MEDIUM,USD
+17e312f4-fc52-4ac1-af04-0336c850919e,03/16/2026 12:30:00,NY Empire State Manufacturing Index,MEDIUM,USD
+46327239-2eea-4b6c-8923-936677bf4c7d,03/16/2026 13:15:00,Industrial Production (MoM),MEDIUM,USD
+6bb3c18a-9de7-4db0-92e8-10338233efba,03/17/2026 12:15:00,ADP Employment Change 4-week average,MEDIUM,USD
+2c64fd12-f26f-402b-8003-4cb61cce58ab,03/17/2026 14:00:00,Pending Home Sales (MoM),MEDIUM,USD
+4b1f503e-4ffd-4eb8-ae62-378752af7de2,03/18/2026 12:30:00,Producer Price Index (MoM),MEDIUM,USD
+179c931b-c0f2-4305-9015-146c94f1d332,03/18/2026 12:30:00,Producer Price Index (YoY),MEDIUM,USD
+0f0b1d59-cf93-4e9e-8816-9a346b00533b,03/18/2026 12:30:00,Producer Price Index ex Food & Energy (MoM),MEDIUM,USD
+8e47bd88-a28f-4b6a-a230-dca19315681e,03/18/2026 12:30:00,Producer Price Index ex Food & Energy (YoY),HIGH,USD
+19104da0-8100-4a17-8195-453f262d99a8,03/18/2026 14:00:00,Factory Orders (MoM),MEDIUM,USD
+0cd3ddbc-0f4c-4957-a7a1-7e062fef1211,03/18/2026 18:00:00,Fed Interest Rate Decision,HIGH,USD
+0dc8fd8e-c848-4fcb-aed3-6748b7b8cea8,03/18/2026 18:00:00,Fed Monetary Policy Statement,HIGH,USD
+184f3239-6d21-4877-893d-7de0ce67fb3e,03/18/2026 18:00:00,FOMC Economic Projections,HIGH,USD
+8d892c24-ee42-423c-9293-ea387b8b5845,03/18/2026 18:00:00,Interest Rate Projections - 1st year,HIGH,USD
+7dee14fb-5af0-48e7-8c8b-a269d82e2636,03/18/2026 18:00:00,Interest Rate Projections - 2nd year,HIGH,USD
+dbdb078e-9fc1-4f9a-9bdd-f7ac48b888e7,03/18/2026 18:00:00,Interest Rate Projections - Current,HIGH,USD
+a187a871-b4ae-44fe-b40c-bb3a9f7d25c2,03/18/2026 18:00:00,Interest Rate Projections - Longer,HIGH,USD
+d6f0cf6c-586d-4a8a-8e23-252c8969afee,03/18/2026 18:30:00,FOMC Press Conference,HIGH,USD
+2b3dd8b9-6802-40d7-b4f3-246d8c873405,03/19/2026 12:30:00,Initial Jobless Claims,MEDIUM,USD
+39a0558e-ddc7-42a7-a349-f0736636522b,03/19/2026 12:30:00,Philadelphia Fed Manufacturing Survey,MEDIUM,USD
+5de84359-62f2-4a12-999e-3150722afd2c,03/19/2026 14:00:00,New Home Sales Change (MoM),MEDIUM,USD
+64e48770-1762-4452-a835-c1fd8922e6f6,03/20/2026 12:00:00,Fed's Bowman speech,MEDIUM,USD
+ffdd40ae-6d2a-4d83-ab5b-6d5cf6c92f88,03/20/2026 12:05:00,Fed's Bowman speech,MEDIUM,USD
+4d3b0573-4983-4faa-83ea-feca8f2f1574,03/20/2026 13:20:00,Fed's Waller speech,MEDIUM,USD
+b43e3e2b-9039-4fe8-baca-82e489f83cc6,03/21/2026 14:30:00,Fed's Chair Powell speech,HIGH,USD
