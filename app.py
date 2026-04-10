@@ -39,7 +39,6 @@ def load_data():
             except:
                 fomc_dates = []
         
-        # Standardize column names
         df.columns = [c.strip().replace(' ', '_').replace('.', '').replace('/', '') for c in df.columns]
         df['Date_Opened'] = pd.to_datetime(df['Date_Opened'], errors='coerce')
         df = df.dropna(subset=['Date_Opened'])
@@ -99,9 +98,21 @@ def calc_pf(series):
     w, l = series[series > 0].sum(), abs(series[series <= 0].sum())
     return w/l if l > 0 else (5.0 if w > 0 else 1.0)
 
+def calc_inst_metrics(series, days_span):
+    if series.empty or days_span <= 0: return (0.0, 0.0)
+    total_pl = series.sum()
+    equity = series.cumsum()
+    peak = equity.cummax()
+    drawdown = (peak - equity).max()
+    
+    years = max(days_span / 365.25, 0.1)
+    cagr = total_pl / years
+    mar = cagr / drawdown if drawdown > 0 else (cagr if cagr > 0 else 0.0)
+    return (mar, cagr)
+
 def style_mtx(df):
     if df.empty: return df
-    color_cols = [c for c in df.columns if "PF" in c or "Score" in c]
+    color_cols = [c for c in df.columns if any(x in c for x in ["PF", "Score", "MAR", "Calmar"])]
     styled = df.style.background_gradient(subset=color_cols, cmap='RdYlGn', vmin=0.7, vmax=2.2).format({c: "{:.2f}" for c in color_cols})
     if 'Weighted Score' in df.columns: styled = styled.set_properties(subset=['Weighted Score'], **{'font-weight': 'bold'})
     return styled
@@ -109,7 +120,25 @@ def style_mtx(df):
 @st.cache_data
 def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades):
     if df.empty: return df
+    
     m_all = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(calc_pf).reset_index().rename(columns={'PL': 'PF (All)'})
+    
+    # 1. MAR (All History)
+    full_span_days = (df['Date_Opened'].max() - df['Date_Opened'].min()).days
+    mar_data = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(lambda x: calc_inst_metrics(x, full_span_days)).reset_index()
+    m_all['MAR (All)'] = mar_data['PL'].apply(lambda x: x[0] if isinstance(x, (tuple, list)) else 0.0)
+
+    # 2. Calmar (Trailing 36 Months)
+    calmar_cutoff = ref_end_date - relativedelta(months=36)
+    df_36m = df[df['Date_Opened'] >= calmar_cutoff]
+    if not df_36m.empty:
+        cal_data = df_36m.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(lambda x: calc_inst_metrics(x, 36*30.44)).reset_index()
+        m_all = m_all.merge(cal_data.rename(columns={'PL': 'Cal_Raw'}), on=['Strategy', 'Time_Opened'], how='left')
+        m_all['Calmar (36M)'] = m_all['Cal_Raw'].apply(lambda x: x[0] if isinstance(x, (tuple, list)) else 0.0)
+        m_all = m_all.drop(columns=['Cal_Raw'])
+    else:
+        m_all['Calmar (36M)'] = 0.0
+
     for l, m in [("24M", 24), ("12M", 12), ("6M", 6), ("3M", 3)]:
         sub = df[(df['Date_Opened'] >= max(ref_end_date - relativedelta(months=m), pd.Timestamp("1678-01-01"))) & (df['Date_Opened'] <= ref_end_date)]
         m_all = m_all.merge(sub.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(calc_pf).reset_index().rename(columns={'PL': f'PF ({l})'}), on=['Strategy', 'Time_Opened'], how='left')
@@ -150,7 +179,7 @@ def render_selection_ui():
     st.title("🛡️ Consistency Matrix")
     all_selections = []
     k_suffix = f"_res_{st.session_state.reset_counter}"
-    display_cols = ['Strategy', 'Time', 'Weighted Score', 'PF (3M)', 'PF (6M)', 'PF (12M)', 'PF (24M)', 'PF (All)', 'Confidence', 'Total Trades']
+    display_cols = ['Strategy', 'Time', 'Weighted Score', 'PF (3M)', 'PF (6M)', 'PF (12M)', 'PF (24M)', 'PF (All)', 'MAR (All)', 'Calmar (36M)', 'Confidence', 'Total Trades']
 
     with st.expander("🏆 Global Top Picks", expanded=True):
         g_tabs = st.tabs(["Overview"] + [d[:3] for d in days])
@@ -218,17 +247,22 @@ if st.session_state.get('confirmed_df') is not None:
     if avoid_fomc:
         df_f = df_f[~df_f['Date_Opened'].dt.normalize().isin(fomc_set)]
 
-    # Metrics Calculation
     df_f['EC'] = acc_size + (df_f['PL'] * multiplier).cumsum()
     df_f['Peak'] = df_f['EC'].cummax()
     df_f['Drawdown'] = df_f['EC'] - df_f['Peak']
     df_f['Drawdown_Pct'] = (df_f['Drawdown'] / df_f['Peak']) * 100
     
     max_dd_pct, max_recovery = df_f['Drawdown_Pct'].min(), 0
+    max_dd_cash = df_f['Drawdown'].min()
+    
     if (df_f['Drawdown'] < 0).any():
         is_in_dd = df_f['Drawdown'] < 0
         dd_groups = (is_in_dd != is_in_dd.shift()).cumsum()
         max_recovery = df_f[is_in_dd].groupby(dd_groups)['Date_Opened'].apply(lambda x: (x.max() - x.min()).days).max()
+
+    p_span = max((df_f['Date_Opened'].max() - df_f['Date_Opened'].min()).days, 1)
+    p_mar, p_cagr_cash = calc_inst_metrics(df_f['PL'] * multiplier, p_span)
+    p_cagr_pct = (p_cagr_cash / acc_size) * 100
 
     wins, losses = df_f[df_f['PL'] > 0]['PL']*multiplier, df_f[df_f['PL'] <= 0]['PL']*multiplier
     win_rate = len(wins)/len(df_f) if not df_f.empty else 0
@@ -240,23 +274,21 @@ if st.session_state.get('confirmed_df') is not None:
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Net Profit", f"${(df_f['PL']*multiplier).sum():,.2f}")
     m2.metric("Portfolio PF", f"{calc_pf(df_f['PL']):.2f}")
-    m3.metric("Win Rate", f"{win_rate*100:.1f}%")
-    m4.metric("Max Drawdown", f"{max_dd_pct:.2f}%")
+    m3.metric("Annual CAGR ($)", f"${p_cagr_cash:,.2f}")
+    m4.metric("Annual CAGR (%)", f"{p_cagr_pct:.2f}%")
 
     m5, m6, m7, m8 = st.columns(4)
-    m5.metric("Expectancy", f"${expectancy:,.2f}")
-    m6.metric("R-Expectancy", f"{(expectancy/abs(losses.mean())):.2f}R" if not losses.empty else "0")
-    m7.metric("Recovery Time", f"{max_recovery} Days")
-    m8.metric("FOMC P/L Saved", f"${-pl_avoided:,.2f}", delta=f"{pl_avoided:,.2f} if traded", delta_color="inverse")
+    m5.metric("Portfolio MAR/Calmar", f"{p_mar:.2f}")
+    m6.metric("Max Drawdown ($)", f"${max_dd_cash:,.2f}")
+    m7.metric("Max Drawdown (%)", f"{max_dd_pct:.2f}%")
+    m8.metric("Recovery Time", f"{max_recovery} Days")
 
-    # 1. Equity Curve
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_f['Date_Opened'], y=df_f['EC'], name="Equity", line=dict(color="#00FFCC")))
     fig.add_trace(go.Scatter(x=df_f['Date_Opened'], y=df_f['Drawdown'], name="Drawdown", fill='tozeroy', line=dict(color="rgba(255,76,76,0.4)"), yaxis="y2"))
     fig.update_layout(template="plotly_dark", height=400, yaxis=dict(title="Balance"), yaxis2=dict(overlaying="y", side="right", showgrid=False), margin=dict(l=0, r=0, t=30, b=0))
     st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
     
-    # 2. Monthly Matrix
     st.write("#### 📅 Monthly Performance Matrix")
     df_f['Year'] = df_f['Date_Opened'].dt.year
     df_f['Month'] = df_f['Date_Opened'].dt.month_name()
@@ -268,8 +300,6 @@ if st.session_state.get('confirmed_df') is not None:
     
     avg_row = pivot.mean(axis=0).to_frame().T
     avg_row.index = ["Average"]
-    
-    # --- FIX: Convert index to string for Arrow compatibility ---
     pivot.index = pivot.index.astype(str)
     final_pivot = pd.concat([pivot, avg_row])
     
@@ -282,18 +312,15 @@ if st.session_state.get('confirmed_df') is not None:
         width='stretch'
     )
 
-    # 3. Trade Log
     st.write("#### 📜 Detailed Trade Log")
     available_cols = df_f.columns.tolist()
     log_cols = ['Date_Opened', 'Time_Opened', 'Strategy', 'PL']
-    if 'Legs' in available_cols:
-        log_cols.insert(3, 'Legs')
+    if 'Legs' in available_cols: log_cols.insert(3, 'Legs')
     
     log_df = df_f[log_cols].copy()
     log_df['PL'] = log_df['PL'] * multiplier
     log_df['Date_Opened'] = log_df['Date_Opened'].dt.strftime('%Y-%m-%d')
     
-    # --- FIX: Swap applymap for map to resolve FutureWarning ---
     st.dataframe(
         log_df.style.map(lambda x: 'color: #00FFCC' if isinstance(x, (int, float)) and x > 0 
                                 else ('color: #FF4C4C' if isinstance(x, (int, float)) and x < 0 else ''), subset=['PL'])
