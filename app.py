@@ -82,13 +82,21 @@ with st.sidebar:
 
     with st.form("filter_form"):
         st.subheader("🎯 Ranking & News")
-        # NEW RANKING SELECTION
         rank_by = st.selectbox("Rank By:", ["Weighted PF", "MAR (All)", "Calmar (36M)"])
-        filter_mode = st.radio("Filter Logic:", ["Top X Results", "Min Weighted PF"])
-        top_x_val = st.number_input("Show Top X", value=10)
-        min_pf_val = st.number_input("Min Weighted PF", value=1.0)
-        min_trades = st.number_input("Min Trades", value=5)
-        avoid_fomc = st.toggle("Avoid FOMC Days", value=True)
+        
+        f_c1, f_c2 = st.columns(2)
+        top_x_val = f_c1.number_input("Show Top X", value=10, min_value=1)
+        min_trades = f_c2.number_input("Min Trades", value=5, min_value=1)
+        
+        min_pf_val = f_c1.number_input("Min Weighted PF", value=1.0, step=0.1)
+        min_mar_val = f_c2.number_input("Min MAR (All)", value=0.0, step=0.1)
+        min_calmar_val = f_c1.number_input("Min Calmar (36M)", value=0.0, step=0.1)
+        
+        avoid_fomc = st.toggle("Avoid FOMC Days", value=False)
+        fomc_only = st.toggle("FOMC Days Only", value=False)
+        fomc_before = st.toggle("Day Before FOMC", value=False)
+        fomc_after = st.toggle("Day After FOMC", value=False)
+        
         sel_strats = st.multiselect("Strategies", sorted(df_raw['Strategy'].unique()), default=sorted(df_raw['Strategy'].unique()))
         acc_size, multiplier = st.number_input("Account Size", value=50000.0), st.number_input("Contracts", value=1)
         time_buffer = st.slider("Buffer (Mins)", 0, 120, 15)
@@ -120,16 +128,13 @@ def style_mtx(df):
 
 @st.cache_data
 def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, sort_col):
-    if df.empty: return df
-    
+    if df.empty: return pd.DataFrame()
     m_all = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(calc_pf).reset_index().rename(columns={'PL': 'PF (All)'})
     
-    # 1. MAR (All History)
     full_span_days = (df['Date_Opened'].max() - df['Date_Opened'].min()).days
     mar_data = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(lambda x: calc_inst_metrics(x, full_span_days)).reset_index()
     m_all['MAR (All)'] = mar_data['PL'].apply(lambda x: x[0] if isinstance(x, (tuple, list)) else 0.0)
 
-    # 2. Calmar (Trailing 36 Months)
     calmar_cutoff = ref_end_date - relativedelta(months=36)
     df_36m = df[df['Date_Opened'] >= calmar_cutoff]
     if not df_36m.empty:
@@ -151,33 +156,76 @@ def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, sort_
     final['Confidence'] = final['Total Trades'].apply(lambda x: "🟢 High" if x>=20 else ("🟡 Med" if x>=10 else "🔴 Low"))
     return final[final['Total Trades'] >= min_trades].sort_values(sort_col, ascending=False).rename(columns={'Time_Opened': 'Time'})
 
-def get_diverse_picks(df, buffer_mins, target_count, filter_mode, threshold, sort_col):
-    if df.empty: return df
-    df = df.copy().sort_values(sort_col, ascending=False)
-    df['temp_time'] = pd.to_datetime(df['Time'].astype(str), format='%H:%M:%S')
+def get_diverse_picks(df, buffer_mins, target_count, min_pf, min_mar, min_calmar, sort_col):
+    if df is None or df.empty: return pd.DataFrame()
+    
+    # Check if required columns exist before filtering
+    required = ['Weighted PF', 'MAR (All)', 'Calmar (36M)']
+    if not all(col in df.columns for col in required):
+        return pd.DataFrame()
+
+    filtered_df = df[
+        (df['Weighted PF'] >= min_pf) & 
+        (df['MAR (All)'] >= min_mar) & 
+        (df['Calmar (36M)'] >= min_calmar)
+    ].copy()
+    
+    if filtered_df.empty: return pd.DataFrame()
+    
+    filtered_df = filtered_df.sort_values(sort_col, ascending=False)
+    filtered_df['temp_time'] = pd.to_datetime(filtered_df['Time'].astype(str), format='%H:%M:%S')
     selected = []
-    for _, row in df.iterrows():
-        if filter_mode == "Top X Results" and len(selected) >= target_count: break
-        if filter_mode == "Min Weighted PF" and row['Weighted PF'] < threshold: continue
+    for _, row in filtered_df.iterrows():
+        if len(selected) >= target_count: break
         if not any(row['Strategy'] == s['Strategy'] and abs((row['temp_time'] - s['temp_time']).total_seconds()/60) < buffer_mins for s in selected):
             selected.append(row)
     return pd.DataFrame(selected).drop(columns=['temp_time']) if selected else pd.DataFrame()
 
 # --- 5. DATA FILTERING ---
 fomc_set = set(pd.to_datetime(fomc_blacklist).normalize())
+pre_fomc_set = {d - pd.Timedelta(days=1) for d in fomc_set}
+post_fomc_set = {d + pd.Timedelta(days=1) for d in fomc_set}
+
 working_df = df_raw[(df_raw['Strategy'].isin(sel_strats)) & (df_raw['Date_Opened'] >= start_date) & (df_raw['Date_Opened'] <= end_date)].copy()
+
 if avoid_fomc:
     working_df = working_df[~working_df['Date_Opened'].dt.normalize().isin(fomc_set)]
+
+if fomc_only or fomc_before or fomc_after:
+    target_dates = set()
+    if fomc_only: target_dates.update(fomc_set)
+    if fomc_before: target_dates.update(pre_fomc_set)
+    if fomc_after: target_dates.update(post_fomc_set)
+    working_df = working_df[working_df['Date_Opened'].dt.normalize().isin(target_dates)]
 
 # --- 6. PRE-CALCULATION ---
 days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 master_pool = get_mtx(working_df, end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by)
 day_pools = {day: get_mtx(working_df[working_df['Day_Name'] == day], end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by) for day in days}
 
-# --- 7. UI SELECTION ---
+# --- 7. UI SELECTION (Updated with Safety Guards) ---
 @st.fragment
 def render_selection_ui():
     st.title("🛡️ Consistency Matrix")
+    
+    # CRITICAL GUARD: Stop if no data found after FOMC/Date filters
+    if master_pool.empty:
+        st.warning("⚠️ No trades found matching these filters. Try adjusting the Date Range or News Toggles.")
+        return
+
+    # --- Risk of Double Stop Display ---
+    st.subheader("⚠️ Estimated Risk of Double Stop")
+    risk_cols = st.columns(min(len(sel_strats), 5))
+    for i, s_name in enumerate(sorted(sel_strats)):
+        s_data = working_df[working_df['Strategy'] == s_name]
+        losses = s_data[s_data['PL'] <= 0]['PL']
+        avg_loss = abs(losses.mean()) if not losses.empty else 0
+        raw_risk = (avg_loss * multiplier * 2)
+        double_stop = (np.ceil(raw_risk / 50) * 50)
+        risk_cols[i % 5].metric(f"{s_name}", f"${double_stop:,.2f}")
+    
+    st.divider()
+    
     all_selections = []
     k_suffix = f"_res_{st.session_state.reset_counter}"
     display_cols = ['Strategy', 'Time', 'Weighted PF', 'PF (3M)', 'PF (6M)', 'PF (12M)', 'PF (24M)', 'PF (All)', 'MAR (All)', 'Calmar (36M)', 'Confidence', 'Total Trades']
@@ -185,36 +233,71 @@ def render_selection_ui():
     with st.expander("🏆 Global Top Picks", expanded=True):
         g_tabs = st.tabs(["Overview"] + [d[:3] for d in days])
         with g_tabs[0]:
-            g_ov = get_diverse_picks(master_pool, time_buffer, top_x_val, filter_mode, min_pf_val, rank_by)
+            g_ov = get_diverse_picks(master_pool, time_buffer, top_x_val, min_pf_val, min_mar_val, min_calmar_val, rank_by)
             if not g_ov.empty:
                 evt_g = st.dataframe(style_mtx(g_ov[display_cols]), width='stretch', hide_index=True, on_select="rerun", key=f"g_ov{k_suffix}")
                 if evt_g.selection.rows: all_selections.append(g_ov.iloc[evt_g.selection.rows])
+        
         for i, day in enumerate(days):
             with g_tabs[i+1]:
-                d_picks = get_diverse_picks(day_pools[day], time_buffer, top_x_val, filter_mode, min_pf_val, rank_by)
-                if not d_picks.empty:
-                    evt_gd = st.dataframe(style_mtx(d_picks[display_cols]), width='stretch', hide_index=True, on_select="rerun", key=f"g_{day}{k_suffix}")
-                    if evt_gd.selection.rows: 
-                        sel = d_picks.iloc[evt_gd.selection.rows].copy(); sel['Day_Name'] = day; all_selections.append(sel)
+                if not day_pools[day].empty:
+                    d_picks = get_diverse_picks(day_pools[day], time_buffer, top_x_val, min_pf_val, min_mar_val, min_calmar_val, rank_by)
+                    if not d_picks.empty:
+                        evt_gd = st.dataframe(style_mtx(d_picks[display_cols]), width='stretch', hide_index=True, on_select="rerun", key=f"g_{day}{k_suffix}")
+                        if evt_gd.selection.rows: 
+                            sel = d_picks.iloc[evt_gd.selection.rows].copy(); sel['Day_Name'] = day; all_selections.append(sel)
 
     st.write("### 📁 Strategy Breakdown")
     for s_name in sel_strats:
-        s_ov = master_pool[master_pool['Strategy'] == s_name].head(top_x_val)
-        if not s_ov.empty:
+        s_base = master_pool[master_pool['Strategy'] == s_name]
+        
+        if s_base.empty:
+            continue
+            
+        s_ov_filtered = s_base[
+            (s_base['Weighted PF'] >= min_pf_val) & 
+            (s_base['MAR (All)'] >= min_mar_val) & 
+            (s_base['Calmar (36M)'] >= min_calmar_val)
+        ].head(top_x_val)
+        
+        day_results = {}
+        has_any_day_data = False
+        for day in days:
+            d_pool = day_pools[day][day_pools[day]['Strategy'] == s_name] if not day_pools[day].empty else pd.DataFrame()
+            if not d_pool.empty:
+                d_filtered = d_pool[
+                    (d_pool['Weighted PF'] >= min_pf_val) & 
+                    (d_pool['MAR (All)'] >= min_mar_val) & 
+                    (d_pool['Calmar (36M)'] >= min_calmar_val)
+                ].head(top_x_val)
+                day_results[day] = d_filtered
+                if not d_filtered.empty:
+                    has_any_day_data = True
+            else:
+                day_results[day] = pd.DataFrame()
+
+        if not s_ov_filtered.empty or has_any_day_data:
             with st.expander(f"📂 {s_name}"):
                 s_tabs = st.tabs(["Overview"] + [d[:3] for d in days])
                 s_disp = [c for c in display_cols if c != 'Strategy']
+                
                 with s_tabs[0]:
-                    evt_s = st.dataframe(style_mtx(s_ov[s_disp]), width='stretch', hide_index=True, on_select="rerun", key=f"s_{s_name}{k_suffix}")
-                    if evt_s.selection.rows: all_selections.append(s_ov.iloc[evt_s.selection.rows])
+                    if not s_ov_filtered.empty:
+                        evt_s = st.dataframe(style_mtx(s_ov_filtered[s_disp]), width='stretch', hide_index=True, on_select="rerun", key=f"s_{s_name}{k_suffix}")
+                        if evt_s.selection.rows: all_selections.append(s_ov_filtered.iloc[evt_s.selection.rows])
+                    else:
+                        st.info("No trades meet 'Overview' filters.")
+
                 for i, day in enumerate(days):
                     with s_tabs[i+1]:
-                        d_pool_s = day_pools[day][day_pools[day]['Strategy'] == s_name].head(top_x_val)
-                        if not d_pool_s.empty:
-                            evt_sd = st.dataframe(style_mtx(d_pool_s[s_disp]), width='stretch', hide_index=True, on_select="rerun", key=f"sd_{s_name}_{day}{k_suffix}")
+                        if day in day_results and not day_results[day].empty:
+                            evt_sd = st.dataframe(style_mtx(day_results[day][s_disp]), width='stretch', hide_index=True, on_select="rerun", key=f"sd_{s_name}_{day}{k_suffix}")
                             if evt_sd.selection.rows:
-                                sel = d_pool_s.iloc[evt_sd.selection.rows].copy(); sel['Day_Name'] = day; all_selections.append(sel)
+                                sel = day_results[day].iloc[evt_sd.selection.rows].copy(); sel['Day_Name'] = day; all_selections.append(sel)
+                        else:
+                            st.info(f"No trades meet filters for {day}.")
 
+    # --- Render Queue Logic ---
     if all_selections:
         queue_df = pd.concat(all_selections).drop_duplicates(subset=['Strategy', 'Time', 'Day_Name'] if 'Day_Name' in pd.concat(all_selections).columns else ['Strategy', 'Time']).copy()
         if 'Day_Name' not in queue_df.columns: queue_df['Day_Name'] = "All"
@@ -241,21 +324,21 @@ render_selection_ui()
 
 # --- 8. INSTITUTIONAL ANALYTICS & LOGS ---
 if st.session_state.get('confirmed_df') is not None:
-    # 1. Reset index and DROP the old one to avoid creating an 'index' column
     df_f = st.session_state.confirmed_df.copy().reset_index(drop=True)
-    
-    # 2. Standardize column names (same logic as load_data)
     df_f.columns = [str(c).strip().replace(' ', '_').replace('.', '').replace('/', '') for c in df_f.columns]
-    
-    # 3. Force 'Strategy' to string type to ensure it renders correctly
     if 'Strategy' in df_f.columns:
         df_f['Strategy'] = df_f['Strategy'].astype(str)
 
-    # 4. Sort for the Equity Curve
     df_f = df_f.sort_values(['Date_Opened', 'Time_Opened'])
     
     if avoid_fomc:
         df_f = df_f[~df_f['Date_Opened'].dt.normalize().isin(fomc_set)]
+    if fomc_only or fomc_before or fomc_after:
+        valid_dates = set()
+        if fomc_only: valid_dates.update(fomc_set)
+        if fomc_before: valid_dates.update(pre_fomc_set)
+        if fomc_after: valid_dates.update(post_fomc_set)
+        df_f = df_f[df_f['Date_Opened'].dt.normalize().isin(valid_dates)]
 
     df_f['EC'] = acc_size + (df_f['PL'] * multiplier).cumsum()
     df_f['Peak'] = df_f['EC'].cummax()
@@ -284,7 +367,7 @@ if st.session_state.get('confirmed_df') is not None:
     m4.metric("Annual CAGR (%)", f"{p_cagr_pct:.2f}%")
 
     m5, m6, m7, m8 = st.columns(4)
-    m5.metric("Portfolio MAR", f"{p_mar:.2f}") # Only show MAR
+    m5.metric("Portfolio MAR", f"{p_mar:.2f}")
     m6.metric("Max Drawdown ($)", f"${max_dd_cash:,.2f}")
     m7.metric("Max Drawdown (%)", f"{max_dd_pct:.2f}%")
     m8.metric("Recovery Time", f"{max_recovery} Days")
@@ -295,6 +378,76 @@ if st.session_state.get('confirmed_df') is not None:
     fig.update_layout(template="plotly_dark", height=400, yaxis=dict(title="Balance"), yaxis2=dict(overlaying="y", side="right", showgrid=False), margin=dict(l=0, r=0, t=30, b=0))
     st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
     
+    st.subheader("🗓️ Daily Risk Profile")
+    st.write("*(Header Risk Estimate × Actual Trade Count in Queue)*")
+
+    reference_risk_map = {}
+    for s_name in sel_strats:
+        s_data = working_df[working_df['Strategy'] == s_name]
+        losses = s_data[s_data['PL'] <= 0]['PL']
+        avg_loss = abs(losses.mean()) if not losses.empty else 0
+        raw_risk = avg_loss * multiplier * 2 
+        reference_risk_map[s_name] = (np.ceil(raw_risk / 50) * 50)
+
+    daily_risk_data = []
+    days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    
+    for day in days_order:
+        day_queue = df_f[df_f['Day_Name'] == day]
+        if not day_queue.empty:
+            unique_selections = day_queue[['Strategy', 'Time_Opened']].drop_duplicates()
+            strat_counts = unique_selections['Strategy'].value_counts()
+            
+            total_day_risk = 0
+            strat_summary = []
+            for s_name, count in strat_counts.items():
+                unit_risk = reference_risk_map.get(s_name, 0)
+                total_day_risk += (unit_risk * count)
+                strat_summary.append(f"{s_name} (x{count})")
+            
+            pct_risk = (total_day_risk / acc_size) * 100 if acc_size > 0 else 0
+            
+            daily_risk_data.append({
+                "Day": day,
+                "Entries": ", ".join(strat_summary),
+                "Combined Risk ($)": total_day_risk,
+                " % Risk": pct_risk,
+                "Unique Trades": len(unique_selections)
+            })
+
+    if daily_risk_data:
+        risk_df = pd.DataFrame(daily_risk_data)
+        total_risk_val = risk_df['Combined Risk ($)'].sum()
+        total_trades_val = risk_df['Unique Trades'].sum()
+        total_pct_risk = (total_risk_val / acc_size) * 100 if acc_size > 0 else 0
+        
+        total_row = pd.DataFrame([{
+            "Day": "TOTAL",
+            "Entries": "Full Selection",
+            "Combined Risk ($)": total_risk_val,
+            " % Risk": total_pct_risk,
+            "Unique Trades": total_trades_val
+        }])
+        
+        final_risk_df = pd.concat([risk_df, total_row], ignore_index=True)
+
+        st.dataframe(
+            final_risk_df.style.background_gradient(
+                subset=pd.IndexSlice[final_risk_df.index[:-1], ['Combined Risk ($)', ' % Risk']], 
+                cmap='YlOrRd'
+            )
+            .format({
+                'Combined Risk ($)': "${:,.2f}",
+                ' % Risk': "{:.2f}%"
+            })
+            .set_properties(
+                subset=pd.IndexSlice[final_risk_df.index[-1:], :], 
+                **{'font-weight': 'bold', 'background-color': '#1a1c23', 'color': '#00FFCC'}
+            ),
+            width='stretch', 
+            hide_index=True
+        )  
+
     st.write("#### 📅 Monthly Performance Matrix")
     df_f['Year'] = df_f['Date_Opened'].dt.year
     df_f['Month'] = df_f['Date_Opened'].dt.month_name()
@@ -319,9 +472,8 @@ if st.session_state.get('confirmed_df') is not None:
     )
 
     st.write("#### 📜 Detailed Trade Log")
-    available_cols = df_f.columns.tolist()
     log_cols = ['Date_Opened', 'Time_Opened', 'Strategy', 'PL']
-    if 'Legs' in available_cols: log_cols.insert(3, 'Legs')
+    if 'Legs' in df_f.columns: log_cols.insert(3, 'Legs')
     
     log_df = df_f[log_cols].copy()
     log_df['PL'] = log_df['PL'] * multiplier
