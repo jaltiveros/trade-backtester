@@ -56,7 +56,7 @@ st.sidebar.title("Configuration")
 st.sidebar.info(f"📁 **Data Last Synced:**\n{last_sync_time}")
 
 profiles = {
-    "Custom (Stability Focus)": [5, 15, 40, 30, 10],
+    "Custom (Stability Focus)": [0, 20, 45, 30, 5],
     "Robustness (Recommended)": [15, 25, 30, 30, 0],
     "Adaptive (Recent Momentum)": [40, 30, 20, 10, 0],
     "Institutional (Max History)": [10, 15, 25, 25, 25]
@@ -76,30 +76,44 @@ with st.sidebar:
         start_date, end_date = (pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])) if len(date_range) == 2 else (db_min, db_max)
 
     st.divider()
+    st.subheader("⚖️ Metric Timeframe Weights")
     selected_profile = st.selectbox("Choose a Profile", list(profiles.keys()))
     p_vals = profiles[selected_profile]
-    w_3m, w_6m, w_12m, w_24m, w_all = [st.slider(f"{k} PF Weight", 0, 100, v) for k, v in zip(["3M", "6M", "12M", "24M", "All-Time"], p_vals)]
+    w_3m, w_6m, w_12m, w_24m, w_all = [st.slider(f"{k} Weight (%)", 0, 100, v) for k, v in zip(["3M", "6M", "12M", "24M", "All-Time"], p_vals)]
+    total_tw = w_3m + w_6m + w_12m + w_24m + w_all
+    if total_tw != 100:
+        st.warning(f"Total weight: {total_tw}% (Should be 100%)")
+
+    st.divider()
+    st.subheader("🏆 Total Score Weighting")
+    sw_sortino = st.slider("Sortino Weight", 0, 100, 10)
+    sw_pf = st.slider("PF Weight", 0, 100, 75)
+    sw_calmar = st.slider("Calmar Weight", 0, 100, 15)
+    total_sw = sw_sortino + sw_pf + sw_calmar
+    if total_sw != 100:
+        st.warning(f"Total weight: {total_sw}% (Should be 100%)")
 
     with st.form("filter_form"):
         st.subheader("🎯 Ranking & News")
-        rank_by = st.selectbox("Rank By:", ["Weighted PF", "MAR (All)", "Calmar (36M)"])
+        rank_by = st.selectbox("Rank By:", ["Total Score", "Weighted PF", "Weighted Sortino", "MAR (All)", "Calmar (36M)"])
         
         f_c1, f_c2 = st.columns(2)
-        top_x_val = f_c1.number_input("Show Top X", value=10, min_value=1)
+        top_x_val = f_c1.number_input("Show Top X", value=25, min_value=1)
         min_trades = f_c2.number_input("Min Trades", value=5, min_value=1)
         
-        min_pf_val = f_c1.number_input("Min Weighted PF", value=1.0, step=0.1)
-        min_mar_val = f_c2.number_input("Min MAR (All)", value=0.0, step=0.1)
-        min_calmar_val = f_c1.number_input("Min Calmar (36M)", value=0.0, step=0.1)
+        min_pf_val = f_c1.number_input("Min Weighted PF", value=0.0, step=0.1)
+        min_sr_val = f_c2.number_input("Min Weighted Sortino", value=0.0, step=0.1)
+        min_mar_val = f_c1.number_input("Min MAR (All)", value=0.0, step=0.1)
+        min_calmar_val = f_c2.number_input("Min Calmar (36M)", value=0.0, step=0.1)
         
-        avoid_fomc = st.toggle("Avoid FOMC Days", value=False)
+        avoid_fomc = st.toggle("Avoid FOMC Days", value=True)
         fomc_only = st.toggle("FOMC Days Only", value=False)
         fomc_before = st.toggle("Day Before FOMC", value=False)
         fomc_after = st.toggle("Day After FOMC", value=False)
         
         sel_strats = st.multiselect("Strategies", sorted(df_raw['Strategy'].unique()), default=sorted(df_raw['Strategy'].unique()))
-        acc_size, multiplier = st.number_input("Account Size", value=50000.0), st.number_input("Contracts", value=1)
-        time_buffer = st.slider("Buffer (Mins)", 0, 120, 15)
+        acc_size, multiplier = st.number_input("Account Size", value=150000.0), st.number_input("Contracts", value=1)
+        time_buffer = st.slider("Buffer (Mins)", 0, 120, 10)
         st.form_submit_button("Apply Changes")
 
 # --- 4. HELPERS ---
@@ -107,6 +121,14 @@ def calc_pf(series):
     if series.empty: return 0.0
     w, l = series[series > 0].sum(), abs(series[series <= 0].sum())
     return w/l if l > 0 else (5.0 if w > 0 else 1.0)
+
+def calc_sortino(series):
+    if series.empty: return 0.0
+    mean_ret = series.mean()
+    downside = series[series < 0]
+    if downside.empty: return 5.0 if mean_ret > 0 else 0.0
+    std_downside = np.std(downside)
+    return mean_ret / std_downside if std_downside > 0 else (5.0 if mean_ret > 0 else 0.0)
 
 def calc_inst_metrics(series, days_span):
     if series.empty or days_span <= 0: return (0.0, 0.0)
@@ -121,18 +143,39 @@ def calc_inst_metrics(series, days_span):
 
 def style_mtx(df):
     if df.empty: return df
-    color_cols = [c for c in df.columns if any(x in c for x in ["PF", "Score", "MAR", "Calmar"])]
-    styled = df.style.background_gradient(subset=color_cols, cmap='RdYlGn', vmin=0.7, vmax=2.2).format({c: "{:.2f}" for c in color_cols})
-    if 'Weighted PF' in df.columns: styled = styled.set_properties(subset=['Weighted PF'], **{'font-weight': 'bold'})
+    
+    pf_cols = [c for c in df.columns if "PF" in c]
+    sr_cols = [c for c in df.columns if "Sortino" in c]
+    mar_cols = [c for c in df.columns if "MAR" in c or "Calmar" in c]
+    score_cols = [c for c in df.columns if "Score" in c]
+    
+    styled = df.style.background_gradient(subset=pf_cols, cmap='RdYlGn', vmin=0.8, vmax=2.2)
+    styled = styled.background_gradient(subset=sr_cols, cmap='RdYlGn', vmin=0.5, vmax=3.0)
+    styled = styled.background_gradient(subset=mar_cols, cmap='RdYlGn', vmin=0.1, vmax=1.2)
+    styled = styled.background_gradient(subset=score_cols, cmap='Blues', vmin=1.0, vmax=4.0)
+
+    format_dict = {c: "{:.2f}" for c in pf_cols + sr_cols + mar_cols + score_cols}
+    styled = styled.format(format_dict)
+    
+    if 'Total Score' in df.columns:
+        styled = styled.set_properties(subset=['Total Score'], **{'font-weight': 'bold', 'font-size': '1.1em'})
+    if 'Weighted PF' in df.columns: 
+        styled = styled.set_properties(subset=['Weighted PF'], **{'font-weight': 'bold'})
+    if 'Weighted Sortino' in df.columns: 
+        styled = styled.set_properties(subset=['Weighted Sortino'], **{'font-weight': 'bold'})
+        
     return styled
 
 @st.cache_data
-def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, sort_col):
+def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, sort_col, sw_pf, sw_sortino, sw_calmar):
     if df.empty: return pd.DataFrame()
-    m_all = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(calc_pf).reset_index().rename(columns={'PL': 'PF (All)'})
     
+    grouped = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL']
+    m_all = grouped.apply(calc_pf).reset_index().rename(columns={'PL': 'PF (All)'})
+    m_all['Sortino (All)'] = grouped.apply(calc_sortino).values
+
     full_span_days = (df['Date_Opened'].max() - df['Date_Opened'].min()).days
-    mar_data = df.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(lambda x: calc_inst_metrics(x, full_span_days)).reset_index()
+    mar_data = grouped.apply(lambda x: calc_inst_metrics(x, full_span_days)).reset_index()
     m_all['MAR (All)'] = mar_data['PL'].apply(lambda x: x[0] if isinstance(x, (tuple, list)) else 0.0)
 
     calmar_cutoff = ref_end_date - relativedelta(months=36)
@@ -147,25 +190,40 @@ def get_mtx(df, ref_end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, sort_
 
     for l, m in [("24M", 24), ("12M", 12), ("6M", 6), ("3M", 3)]:
         sub = df[(df['Date_Opened'] >= max(ref_end_date - relativedelta(months=m), pd.Timestamp("1678-01-01"))) & (df['Date_Opened'] <= ref_end_date)]
-        m_all = m_all.merge(sub.groupby(['Strategy', 'Time_Opened'], observed=False)['PL'].apply(calc_pf).reset_index().rename(columns={'PL': f'PF ({l})'}), on=['Strategy', 'Time_Opened'], how='left')
+        sub_grouped = sub.groupby(['Strategy', 'Time_Opened'], observed=False)['PL']
+        m_all = m_all.merge(sub_grouped.apply(calc_pf).reset_index().rename(columns={'PL': f'PF ({l})'}), on=['Strategy', 'Time_Opened'], how='left')
+        m_all = m_all.merge(sub_grouped.apply(calc_sortino).reset_index().rename(columns={'PL': f'Sortino ({l})'}), on=['Strategy', 'Time_Opened'], how='left')
     
     num_cols = m_all.select_dtypes(include=[np.number]).columns
     m_all[num_cols] = m_all[num_cols].fillna(1.0)
-    m_all['Weighted PF'] = (m_all['PF (3M)']*(w_3m/100)) + (m_all['PF (6M)']*(w_6m/100)) + (m_all['PF (12M)']*(w_12m/100)) + (m_all['PF (24M)']*(w_24m/100)) + (m_all['PF (All)']*(w_all/100))
+    
+    weights = [w_3m/100, w_6m/100, w_12m/100, w_24m/100, w_all/100]
+    m_all['Weighted PF'] = sum(m_all[c] * w for c, w in zip(['PF (3M)', 'PF (6M)', 'PF (12M)', 'PF (24M)', 'PF (All)'], weights))
+    m_all['Weighted Sortino'] = sum(m_all[c] * w for c, w in zip(['Sortino (3M)', 'Sortino (6M)', 'Sortino (12M)', 'Sortino (24M)', 'Sortino (All)'], weights))
+    
+    # --- TOTAL SCORE CALCULATION ---
+    # Normalize weights to ensure they sum to 1.0 even if sliders don't
+    sum_w = max(sw_pf + sw_sortino + sw_calmar, 1)
+    m_all['Total Score'] = (
+        (m_all['Weighted PF'] * (sw_pf / sum_w)) +
+        (m_all['Weighted Sortino'] * (sw_sortino / sum_w)) +
+        (m_all['Calmar (36M)'] * (sw_calmar / sum_w))
+    )
+    
     final = m_all.merge(df.groupby(['Strategy', 'Time_Opened'], observed=False).size().reset_index(name='Total Trades'), on=['Strategy', 'Time_Opened'])
     final['Confidence'] = final['Total Trades'].apply(lambda x: "🟢 High" if x>=20 else ("🟡 Med" if x>=10 else "🔴 Low"))
+    
     return final[final['Total Trades'] >= min_trades].sort_values(sort_col, ascending=False).rename(columns={'Time_Opened': 'Time'})
 
-def get_diverse_picks(df, buffer_mins, target_count, min_pf, min_mar, min_calmar, sort_col):
+def get_diverse_picks(df, buffer_mins, target_count, min_pf, min_sr, min_mar, min_calmar, sort_col):
     if df is None or df.empty: return pd.DataFrame()
     
-    # Check if required columns exist before filtering
-    required = ['Weighted PF', 'MAR (All)', 'Calmar (36M)']
-    if not all(col in df.columns for col in required):
-        return pd.DataFrame()
+    required = ['Weighted PF', 'Weighted Sortino', 'MAR (All)', 'Calmar (36M)', 'Total Score']
+    if not all(col in df.columns for col in required): return pd.DataFrame()
 
     filtered_df = df[
         (df['Weighted PF'] >= min_pf) & 
+        (df['Weighted Sortino'] >= min_sr) &
         (df['MAR (All)'] >= min_mar) & 
         (df['Calmar (36M)'] >= min_calmar)
     ].copy()
@@ -179,7 +237,12 @@ def get_diverse_picks(df, buffer_mins, target_count, min_pf, min_mar, min_calmar
         if len(selected) >= target_count: break
         if not any(row['Strategy'] == s['Strategy'] and abs((row['temp_time'] - s['temp_time']).total_seconds()/60) < buffer_mins for s in selected):
             selected.append(row)
-    return pd.DataFrame(selected).drop(columns=['temp_time']) if selected else pd.DataFrame()
+##--    return pd.DataFrame(selected).drop(columns=['temp_time']) if selected else pd.DataFrame()
+
+# Convert list back to DF and sort by Time chronologically for the UI
+    if not selected: return pd.DataFrame()
+    res_df = pd.DataFrame(selected).drop(columns=['temp_time'])
+    return res_df.sort_values('Time')
 
 # --- 5. DATA FILTERING ---
 fomc_set = set(pd.to_datetime(fomc_blacklist).normalize())
@@ -188,8 +251,7 @@ post_fomc_set = {d + pd.Timedelta(days=1) for d in fomc_set}
 
 working_df = df_raw[(df_raw['Strategy'].isin(sel_strats)) & (df_raw['Date_Opened'] >= start_date) & (df_raw['Date_Opened'] <= end_date)].copy()
 
-if avoid_fomc:
-    working_df = working_df[~working_df['Date_Opened'].dt.normalize().isin(fomc_set)]
+if avoid_fomc: working_df = working_df[~working_df['Date_Opened'].dt.normalize().isin(fomc_set)]
 
 if fomc_only or fomc_before or fomc_after:
     target_dates = set()
@@ -200,27 +262,26 @@ if fomc_only or fomc_before or fomc_after:
 
 # --- 6. PRE-CALCULATION ---
 days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-master_pool = get_mtx(working_df, end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by)
-day_pools = {day: get_mtx(working_df[working_df['Day_Name'] == day], end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by) for day in days}
+master_pool = get_mtx(working_df, end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by, sw_pf, sw_sortino, sw_calmar)
+day_pools = {day: get_mtx(working_df[working_df['Day_Name'] == day], end_date, w_3m, w_6m, w_12m, w_24m, w_all, min_trades, rank_by, sw_pf, sw_sortino, sw_calmar) for day in days}
 
-# --- 7. UI SELECTION (Updated with Safety Guards) ---
+# --- 7. UI SELECTION ---
 @st.fragment
 def render_selection_ui():
     st.title("🛡️ Consistency Matrix")
     
-    # CRITICAL GUARD: Stop if no data found after FOMC/Date filters
     if master_pool.empty:
-        st.warning("⚠️ No trades found matching these filters. Try adjusting the Date Range or News Toggles.")
+        st.warning("⚠️ No trades found matching these filters.")
         return
 
-    # --- Risk of Double Stop Display ---
     st.subheader("⚠️ Estimated Risk of Double Stop")
     risk_cols = st.columns(min(len(sel_strats), 5))
     for i, s_name in enumerate(sorted(sel_strats)):
         s_data = working_df[working_df['Strategy'] == s_name]
         losses = s_data[s_data['PL'] <= 0]['PL']
         avg_loss = abs(losses.mean()) if not losses.empty else 0
-        raw_risk = (avg_loss * multiplier * 2)
+        risk_factor = 2 if "IC" in s_name else 1
+        raw_risk = (avg_loss * multiplier * risk_factor)
         double_stop = (np.ceil(raw_risk / 50) * 50)
         risk_cols[i % 5].metric(f"{s_name}", f"${double_stop:,.2f}")
     
@@ -228,12 +289,20 @@ def render_selection_ui():
     
     all_selections = []
     k_suffix = f"_res_{st.session_state.reset_counter}"
-    display_cols = ['Strategy', 'Time', 'Weighted PF', 'PF (3M)', 'PF (6M)', 'PF (12M)', 'PF (24M)', 'PF (All)', 'MAR (All)', 'Calmar (36M)', 'Confidence', 'Total Trades']
+    
+    display_cols = [
+        'Strategy', 'Time', 'Total Score', 'Weighted PF', 'Weighted Sortino', 'Calmar (36M)',
+##--        'PF (3M)', 'Sortino (3M)',
+        'PF (6M)', 'Sortino (6M)', 
+        'PF (12M)', 'Sortino (12M)', 'PF (24M)', 'Sortino (24M)', 
+        'PF (All)', 'Sortino (All)', 'MAR (All)', 
+        'Confidence', 'Total Trades'
+    ]
 
     with st.expander("🏆 Global Top Picks", expanded=True):
         g_tabs = st.tabs(["Overview"] + [d[:3] for d in days])
         with g_tabs[0]:
-            g_ov = get_diverse_picks(master_pool, time_buffer, top_x_val, min_pf_val, min_mar_val, min_calmar_val, rank_by)
+            g_ov = get_diverse_picks(master_pool, time_buffer, top_x_val, min_pf_val, min_sr_val, min_mar_val, min_calmar_val, rank_by)
             if not g_ov.empty:
                 evt_g = st.dataframe(style_mtx(g_ov[display_cols]), width='stretch', hide_index=True, on_select="rerun", key=f"g_ov{k_suffix}")
                 if evt_g.selection.rows: all_selections.append(g_ov.iloc[evt_g.selection.rows])
@@ -241,7 +310,7 @@ def render_selection_ui():
         for i, day in enumerate(days):
             with g_tabs[i+1]:
                 if not day_pools[day].empty:
-                    d_picks = get_diverse_picks(day_pools[day], time_buffer, top_x_val, min_pf_val, min_mar_val, min_calmar_val, rank_by)
+                    d_picks = get_diverse_picks(day_pools[day], time_buffer, top_x_val, min_pf_val, min_sr_val, min_mar_val, min_calmar_val, rank_by)
                     if not d_picks.empty:
                         evt_gd = st.dataframe(style_mtx(d_picks[display_cols]), width='stretch', hide_index=True, on_select="rerun", key=f"g_{day}{k_suffix}")
                         if evt_gd.selection.rows: 
@@ -250,15 +319,14 @@ def render_selection_ui():
     st.write("### 📁 Strategy Breakdown")
     for s_name in sel_strats:
         s_base = master_pool[master_pool['Strategy'] == s_name]
-        
-        if s_base.empty:
-            continue
+        if s_base.empty: continue
             
         s_ov_filtered = s_base[
             (s_base['Weighted PF'] >= min_pf_val) & 
+            (s_base['Weighted Sortino'] >= min_sr_val) &
             (s_base['MAR (All)'] >= min_mar_val) & 
             (s_base['Calmar (36M)'] >= min_calmar_val)
-        ].head(top_x_val)
+        ].head(top_x_val).sort_values('Time')
         
         day_results = {}
         has_any_day_data = False
@@ -267,12 +335,12 @@ def render_selection_ui():
             if not d_pool.empty:
                 d_filtered = d_pool[
                     (d_pool['Weighted PF'] >= min_pf_val) & 
+                    (d_pool['Weighted Sortino'] >= min_sr_val) &
                     (d_pool['MAR (All)'] >= min_mar_val) & 
                     (d_pool['Calmar (36M)'] >= min_calmar_val)
-                ].head(top_x_val)
+                ].head(top_x_val).sort_values('Time')
                 day_results[day] = d_filtered
-                if not d_filtered.empty:
-                    has_any_day_data = True
+                if not d_filtered.empty: has_any_day_data = True
             else:
                 day_results[day] = pd.DataFrame()
 
@@ -297,15 +365,13 @@ def render_selection_ui():
                         else:
                             st.info(f"No trades meet filters for {day}.")
 
-    # --- Render Queue Logic ---
     if all_selections:
         queue_df = pd.concat(all_selections).drop_duplicates(subset=['Strategy', 'Time', 'Day_Name'] if 'Day_Name' in pd.concat(all_selections).columns else ['Strategy', 'Time']).copy()
         if 'Day_Name' not in queue_df.columns: queue_df['Day_Name'] = "All"
-        
         st.divider()
         st.subheader("📍 Selection Queue")
         q_col1, q_col2 = st.columns([4, 1])
-        with q_col1: st.dataframe(queue_df[['Strategy', 'Day_Name', 'Time', 'Weighted PF', 'Confidence', 'Total Trades']], width='stretch', hide_index=True)
+        with q_col1: st.dataframe(queue_df[['Strategy', 'Day_Name', 'Time', 'Total Score', 'Weighted PF', 'Weighted Sortino', 'Confidence', 'Total Trades']], width='stretch', hide_index=True)
         with q_col2:
             if st.button("🚀 CONFIRM", width='stretch', type="primary"):
                 mask = pd.Series(False, index=df_raw.index)
@@ -321,6 +387,7 @@ def render_selection_ui():
                 st.rerun()
 
 render_selection_ui()
+
 
 # --- 8. INSTITUTIONAL ANALYTICS & LOGS ---
 if st.session_state.get('confirmed_df') is not None:
